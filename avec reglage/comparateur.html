@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Comparateur Failure code — SFMEA vs RWB</title>
+<script src="xlsx.full.min.js"></script>
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --accent:#38bdf8; --ok:#22c55e; --warn:#f59e0b; --txt:#e2e8f0; --muted:#94a3b8; --border:#334155; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; margin:0; background:var(--bg); color:var(--txt); }
+  .app { display:flex; min-height:100vh; }
+  /* Sidebar */
+  .sidebar { width:212px; flex-shrink:0; background:var(--card); border-right:1px solid var(--border); padding:18px 12px; }
+  .brand { font-weight:700; font-size:15px; padding:4px 10px 18px; display:flex; align-items:center; gap:8px; }
+  .brand .dot { width:10px; height:10px; border-radius:50%; background:var(--accent); }
+  .navitem { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:8px; color:var(--muted); cursor:pointer; font-size:14px; margin-bottom:4px; user-select:none; }
+  .navitem:hover { color:var(--txt); background:rgba(148,163,184,.08); }
+  .navitem.active { background:rgba(56,189,248,.14); color:var(--txt); font-weight:600; }
+  .navitem .ico { width:18px; text-align:center; }
+  .sidebar .foot { position:absolute; bottom:14px; font-size:11px; color:var(--muted); padding:0 10px; max-width:188px; line-height:1.4; }
+  /* Content */
+  .content { flex:1; min-width:0; }
+  header { padding:20px 28px; background:var(--card); border-bottom:1px solid var(--border); }
+  header h1 { margin:0; font-size:20px; }
+  header p { margin:6px 0 0; color:var(--muted); font-size:13px; }
+  main { padding:24px 28px; }
+  .view[hidden] { display:none; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:18px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px; }
+  .card h3 { margin:0 0 8px; font-size:14px; }
+  .card small { color:var(--muted); display:block; margin-bottom:10px; line-height:1.4; }
+  input[type=file] { width:100%; color:var(--txt); font-size:13px; }
+  .status { font-size:12px; margin-top:8px; color:var(--muted); }
+  .status.loaded { color:var(--ok); }
+  .controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:18px; }
+  button { background:var(--accent); color:#03293d; border:0; padding:10px 18px; border-radius:8px; font-weight:600; cursor:pointer; font-size:14px; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  button.sec { background:transparent; color:var(--accent); border:1px solid var(--accent); }
+  .summary { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:16px; }
+  .pill { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:10px 16px; font-size:13px; }
+  .pill b { font-size:20px; display:block; color:var(--accent); }
+  .pill.ok b { color:var(--ok); } .pill.warn b { color:var(--warn); }
+  input[type=text], input[type=number] { background:#0b1220; border:1px solid var(--border); color:var(--txt); padding:9px 12px; border-radius:8px; font-size:13px; }
+  #search { min-width:260px; }
+  .tabs { display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
+  .tab { background:var(--card); border:1px solid var(--border); padding:8px 14px; border-radius:8px; cursor:pointer; font-size:13px; color:var(--muted); }
+  .tab.active { color:var(--txt); border-color:var(--accent); }
+  .table-wrap { overflow:auto; border:1px solid var(--border); border-radius:10px; max-height:62vh; }
+  table { border-collapse:collapse; width:100%; font-size:12.5px; }
+  th, td { border-bottom:1px solid var(--border); padding:7px 10px; text-align:left; vertical-align:top; white-space:nowrap; max-width:380px; overflow:hidden; text-overflow:ellipsis; }
+  th { position:sticky; top:0; background:#0b1220; z-index:1; cursor:pointer; }
+  tr:hover td { background:#172033; }
+  td.code { color:var(--accent); font-weight:600; white-space:nowrap; }
+  .badge { display:inline-block; padding:2px 9px; border-radius:6px; font-weight:700; font-size:11px; letter-spacing:.3px; }
+  .badge.match { background:rgba(34,197,94,.18); color:#4ade80; border:1px solid rgba(34,197,94,.4); }
+  .badge.nomatch { background:rgba(248,113,113,.18); color:#f87171; border:1px solid rgba(248,113,113,.45); }
+  .badge.na { background:rgba(148,163,184,.15); color:var(--muted); border:1px solid var(--border); }
+  .muted { color:var(--muted); }
+  .err { color:#f87171; font-size:13px; margin-top:10px; }
+  .hint { color:var(--muted); font-size:12px; margin:4px 0 0; }
+  /* Settings */
+  .settings-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:18px; }
+  @media (max-width:1100px){ .settings-grid { grid-template-columns:1fr; } }
+  .field { margin-bottom:12px; }
+  .field label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .field input { width:100%; }
+  .set-status { font-size:13px; margin-left:6px; }
+  .set-status.ok { color:var(--ok); } .set-status.err { color:#f87171; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><span class="dot"></span> Comparateur SFMEA</div>
+    <div class="navitem active" data-nav="compare"><span class="ico">📊</span> Comparaison</div>
+    <div class="navitem" data-nav="settings"><span class="ico">⚙️</span> Réglages</div>
+    <div class="foot">100% local — aucune donnée n'est envoyée sur internet.</div>
+  </aside>
+
+  <div class="content">
+    <header>
+      <h1 id="pageTitle">Comparaison « Failure code »</h1>
+      <p id="pageSub">Lignes communes entre le SFMEA et le RWB, comparaison des taux de défaillance et récupération de la Description. Les feuilles/colonnes sont paramétrables dans <b>Réglages</b>.</p>
+    </header>
+
+    <!-- VUE COMPARAISON -->
+    <main class="view" id="view-compare">
+      <div class="grid">
+        <div class="card">
+          <h3>1. SFMEA Excel Files</h3>
+          <small id="fmeaSub"></small>
+          <input type="file" id="fmeaFile" accept=".xlsm,.xlsx,.xls">
+          <div class="status" id="fmeaStatus">Aucun fichier chargé.</div>
+        </div>
+        <div class="card">
+          <h3>2. RWB Excel Files</h3>
+          <small id="rwbSub"></small>
+          <input type="file" id="rwbFile" accept=".xlsx,.xlsm,.xls">
+          <div class="status" id="rwbStatus">Aucun fichier chargé.</div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="compareBtn" disabled>Comparer</button>
+        <input type="text" id="search" placeholder="Filtrer (code, équipement, mode...)" />
+        <button class="sec" id="exportBtn" disabled>Exporter en Excel</button>
+      </div>
+      <div class="err" id="error"></div>
+
+      <div id="results" style="display:none;">
+        <div class="summary" id="summary"></div>
+        <div class="tabs">
+          <div class="tab active" data-view="common">Communs</div>
+          <div class="tab" data-view="onlyFmea">Dans FMEA seulement</div>
+          <div class="tab" data-view="onlyRwb">Dans RWB seulement</div>
+        </div>
+        <p class="hint" id="viewHint"></p>
+        <div class="table-wrap">
+          <table id="resultTable"><thead></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </main>
+
+    <!-- VUE RÉGLAGES -->
+    <main class="view" id="view-settings" hidden>
+      <p class="hint" style="margin-bottom:16px;">
+        Indiquez le <b>nom de la feuille</b>, la <b>ligne d'en-tête</b> et les <b>colonnes par lettre</b> (A, E, G, N…) tel que dans Excel.
+        Ces réglages pilotent toute l'analyse et sont mémorisés sur ce poste.
+      </p>
+      <div class="settings-grid" id="settingsGrid"></div>
+      <div class="controls">
+        <button id="saveSettings">Enregistrer</button>
+        <button class="sec" id="resetSettings">Réinitialiser par défaut</button>
+        <span class="set-status" id="setStatus"></span>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+/* ===================== RÉGLAGES PARAMÉTRABLES ===================== */
+const DEFAULTS = {
+  fmeaSheet:'analysis', fmeaHeaderRow:4, fmeaCodeCol:'E', fmeaEquipCol:'A', fmeaRateCol:'G', fmeaLastCol:'X',
+  rwbRateSheet:'FailureModels', rwbRateHeaderRow:1, rwbIdCol:'A', rwbRateCol:'N',
+  rwbDescSheet:'PrimaryEvents', rwbDescHeaderRow:1, rwbDescIdCol:'A', rwbDescCol:'F'
+};
+const SETTINGS_SCHEMA = [
+  { title:'SFMEA (fichier 1)', fields:[
+    {key:'fmeaSheet',     label:'Feuille',                          type:'text'},
+    {key:'fmeaHeaderRow', label:'Ligne d’en-tête',            type:'num'},
+    {key:'fmeaCodeCol',   label:'Colonne Failure code',             type:'col'},
+    {key:'fmeaEquipCol',  label:'Colonne Equipment (filtre lignes vides)', type:'col'},
+    {key:'fmeaRateCol',   label:'Colonne Failure rate',             type:'col'},
+    {key:'fmeaLastCol',   label:'Dernière colonne affichée',        type:'col'},
+  ]},
+  { title:'RWB — FailureModels (Id + taux)', fields:[
+    {key:'rwbRateSheet',     label:'Feuille',               type:'text'},
+    {key:'rwbRateHeaderRow', label:'Ligne d’en-tête',  type:'num'},
+    {key:'rwbIdCol',         label:'Colonne Id',            type:'col'},
+    {key:'rwbRateCol',       label:'Colonne FailureRate',   type:'col'},
+  ]},
+  { title:'RWB — PrimaryEvents (Description)', fields:[
+    {key:'rwbDescSheet',     label:'Feuille',               type:'text'},
+    {key:'rwbDescHeaderRow', label:'Ligne d’en-tête',  type:'num'},
+    {key:'rwbDescIdCol',     label:'Colonne Id',            type:'col'},
+    {key:'rwbDescCol',       label:'Colonne Description',   type:'col'},
+  ]},
+];
+let settings = Object.assign({}, DEFAULTS);
+try { const s = JSON.parse(localStorage.getItem('cmp_settings')||'null'); if(s) settings = Object.assign({}, DEFAULTS, s); } catch(e){}
+function saveSettingsToStorage(){ try { localStorage.setItem('cmp_settings', JSON.stringify(settings)); } catch(e){} }
+
+const RATE_REL_TOL = 1e-6; // tolérance relative pour considérer 2 taux identiques
+
+/* ===================== ÉTAT ===================== */
+let fmeaData = null, rwbIds = null, rwbRaw = null, rwbRateMap = null, rwbDescMap = null;
+let fmeaFileObj = null, rwbFileObj = null;
+let result = null, currentView = 'common', sortState = { col:null, dir:1 };
+
+const $ = id => document.getElementById(id);
+const norm = v => (v===null||v===undefined) ? '' : String(v).trim().toUpperCase();
+
+/* ===================== UTILITAIRES COLONNES ===================== */
+function colToIdx(letter){
+  const s = String(letter||'').trim().toUpperCase();
+  if(!/^[A-Z]+$/.test(s)) return -1;
+  let n=0; for(let i=0;i<s.length;i++) n=n*26+(s.charCodeAt(i)-64);
+  return n-1;
+}
+function idxToCol(i){ let n=i+1, s=''; while(n>0){ const r=(n-1)%26; s=String.fromCharCode(65+r)+s; n=Math.floor((n-1)/26);} return s; }
+
+/* ===================== LECTURE FICHIERS ===================== */
+function readFile(file){
+  return new Promise((resolve,reject)=>{
+    const r = new FileReader();
+    r.onload = e => { try { resolve(XLSX.read(e.target.result, {type:'array'})); } catch(err){ reject(err); } };
+    r.onerror = reject;
+    r.readAsArrayBuffer(file);
+  });
+}
+function sheetToMatrix(wb, sheetName){
+  const ws = wb.Sheets[sheetName];
+  if(!ws) throw new Error('Feuille « '+sheetName+' » introuvable. Feuilles présentes : '+wb.SheetNames.join(', '));
+  return XLSX.utils.sheet_to_json(ws, {header:1, raw:false, defval:''});
+}
+
+async function loadFmea(file){
+  const wb = await readFile(file);
+  const m = sheetToMatrix(wb, settings.fmeaSheet);
+  const hr = parseInt(settings.fmeaHeaderRow,10)-1;
+  const codeIdx = colToIdx(settings.fmeaCodeCol);
+  const equipIdx = colToIdx(settings.fmeaEquipCol);
+  const rateIdx = colToIdx(settings.fmeaRateCol);
+  let lastIdx = colToIdx(settings.fmeaLastCol);
+  if(codeIdx<0) throw new Error('Réglages : colonne « Failure code » invalide.');
+  if(isNaN(hr)||hr<0||hr>=m.length) throw new Error('Réglages : ligne d’en-tête SFMEA invalide.');
+  lastIdx = Math.max(lastIdx, codeIdx, rateIdx>=0?rateIdx:0, equipIdx>=0?equipIdx:0);
+  const headerArr = m[hr] || [];
+  const headers = [];
+  for(let i=0;i<=lastIdx;i++) headers.push({ idx:i, label:(headerArr[i]&&String(headerArr[i]).trim())||idxToCol(i) });
+  const rows = [];
+  let skippedNoEquip = 0;
+  for(let r=hr+1;r<m.length;r++){
+    const row = m[r]||[];
+    const code = row[codeIdx];
+    if(code===null||code===undefined||String(code).trim()==='') continue;
+    if(equipIdx>=0){
+      const eq = row[equipIdx];
+      if(eq===null||eq===undefined||String(eq).trim()===''){ skippedNoEquip++; continue; }
+    }
+    rows.push({ __code:String(code).trim(), __codeN:norm(code), raw:row });
+  }
+  return {
+    headers, codeIdx, rateIdx:(rateIdx>=0?rateIdx:null), lastIdx,
+    codeLabel: headers[codeIdx]?headers[codeIdx].label:idxToCol(codeIdx),
+    rateLabel: (rateIdx>=0&&headers[rateIdx])?headers[rateIdx].label:(rateIdx>=0?idxToCol(rateIdx):null),
+    rows, skippedNoEquip
+  };
+}
+
+function loadKeyValueByLetter(wb, sheetName, headerRow1, idCol, valCol){
+  const map = new Map();
+  if(!wb.Sheets[sheetName]) return map;
+  const m = sheetToMatrix(wb, sheetName);
+  const hr = parseInt(headerRow1,10)-1, idIdx = colToIdx(idCol), valIdx = colToIdx(valCol);
+  if(idIdx<0||valIdx<0||isNaN(hr)||hr<0) return map;
+  for(let r=hr+1;r<m.length;r++){
+    const row = m[r]||[];
+    const id = row[idIdx];
+    if(id===null||id===undefined||String(id).trim()==='') continue;
+    const k = norm(id);
+    if(!map.has(k)) map.set(k, row[valIdx]);
+  }
+  return map;
+}
+
+async function loadRwb(file){
+  const wb = await readFile(file);
+  const m = sheetToMatrix(wb, settings.rwbRateSheet);
+  const hr = parseInt(settings.rwbRateHeaderRow,10)-1;
+  const idIdx = colToIdx(settings.rwbIdCol);
+  const rateIdx = colToIdx(settings.rwbRateCol);
+  if(idIdx<0) throw new Error('Réglages : colonne « Id » (RWB) invalide.');
+  if(isNaN(hr)||hr<0||hr>=m.length) throw new Error('Réglages : ligne d’en-tête RWB invalide.');
+  const headerArr = m[hr] || [];
+  const headers = headerArr.map((v,i)=> (v&&String(v).trim())?String(v).trim():idxToCol(i));
+  const ids = new Set(), raw = [], rateMap = new Map();
+  for(let r=hr+1;r<m.length;r++){
+    const row = m[r]||[];
+    const id = row[idIdx];
+    if(id===null||id===undefined||String(id).trim()==='') continue;
+    const k = norm(id);
+    ids.add(k);
+    if(rateIdx>=0 && !rateMap.has(k)) rateMap.set(k, row[rateIdx]);
+    const obj = {}; headers.forEach((hd,i)=> obj[hd]= row[i]!==undefined?row[i]:'');
+    obj.__id = String(id).trim(); obj.__idN = k;
+    raw.push(obj);
+  }
+  const descMap = loadKeyValueByLetter(wb, settings.rwbDescSheet, settings.rwbDescHeaderRow, settings.rwbDescIdCol, settings.rwbDescCol);
+  return { ids, raw, headers, rateMap, descMap };
+}
+
+/* ===================== CHARGEMENT (réutilisable) ===================== */
+async function processFmea(file){
+  $('error').textContent='';
+  $('fmeaStatus').textContent='Lecture en cours...'; $('fmeaStatus').className='status';
+  try{
+    fmeaData = await loadFmea(file);
+    const skipTxt = fmeaData.skippedNoEquip ? (' ('+fmeaData.skippedNoEquip+' ligne(s) sans Equipment ignorée(s))') : '';
+    $('fmeaStatus').textContent = '✓ '+file.name+' — '+fmeaData.rows.length+' lignes exploitables'+skipTxt+'.';
+    $('fmeaStatus').className='status loaded';
+  }catch(err){ fmeaData=null; $('fmeaStatus').textContent='✗ '+err.message; $('fmeaStatus').className='status'; $('error').textContent=err.message; }
+  refreshStatus();
+}
+async function processRwb(file){
+  $('error').textContent='';
+  $('rwbStatus').textContent='Lecture en cours...'; $('rwbStatus').className='status';
+  try{
+    const r = await loadRwb(file);
+    rwbIds = r.ids; rwbRaw = r.raw; rwbRateMap = r.rateMap; rwbDescMap = r.descMap;
+    const rateInfo = rwbRateMap.size ? (', '+rwbRateMap.size+' taux lus') : ' (⚠ taux introuvables)';
+    const descInfo = rwbDescMap.size ? (', '+rwbDescMap.size+' descriptions') : ' (⚠ descriptions introuvables)';
+    $('rwbStatus').textContent = '✓ '+file.name+' — '+rwbIds.size+' Id ('+settings.rwbRateSheet+')'+rateInfo+descInfo+'.';
+    $('rwbStatus').className='status loaded';
+  }catch(err){ rwbIds=null; $('rwbStatus').textContent='✗ '+err.message; $('rwbStatus').className='status'; $('error').textContent=err.message; }
+  refreshStatus();
+}
+
+$('fmeaFile').addEventListener('change', e=>{ const f=e.target.files[0]; if(f){ fmeaFileObj=f; processFmea(f); } });
+$('rwbFile').addEventListener('change', e=>{ const f=e.target.files[0]; if(f){ rwbFileObj=f; processRwb(f); } });
+
+function refreshStatus(){ $('compareBtn').disabled = !(fmeaData && rwbIds); }
+
+/* ===================== COMPARAISON ===================== */
+function doCompare(){
+  $('error').textContent='';
+  if(!fmeaData || !rwbIds) return;
+  const common = [], onlyFmea = [];
+  const fmeaCodes = new Set(fmeaData.rows.map(r=>r.__codeN));
+  for(const row of fmeaData.rows){
+    if(rwbIds.has(row.__codeN)) common.push(row); else onlyFmea.push(row);
+  }
+  const onlyRwb = rwbRaw.filter(r => !fmeaCodes.has(r.__idN));
+  result = { common, onlyFmea, onlyRwb };
+  renderSummary();
+  $('results').style.display='block';
+  $('exportBtn').disabled = false;
+  currentView='common'; setActiveTab(); render();
+}
+$('compareBtn').addEventListener('click', doCompare);
+
+function renderSummary(){
+  $('summary').innerHTML =
+    '<div class="pill">Failure codes (FMEA)<b>'+fmeaData.rows.length+'</b></div>'+
+    '<div class="pill">Id ('+escapeHtml(settings.rwbRateSheet)+')<b>'+rwbIds.size+'</b></div>'+
+    '<div class="pill ok">Communs<b>'+result.common.length+'</b></div>'+
+    '<div class="pill warn">FMEA seulement<b>'+result.onlyFmea.length+'</b></div>'+
+    '<div class="pill warn">RWB seulement<b>'+result.onlyRwb.length+'</b></div>';
+}
+
+document.querySelectorAll('.tab').forEach(t=> t.addEventListener('click', ()=>{
+  currentView = t.dataset.view; sortState={col:null,dir:1}; setActiveTab(); render();
+}));
+function setActiveTab(){ document.querySelectorAll('.tab').forEach(t=> t.classList.toggle('active', t.dataset.view===currentView)); }
+
+$('search').addEventListener('input', render);
+
+function currentRows(){
+  if(currentView==='onlyRwb') return result.onlyRwb;
+  return currentView==='common' ? result.common : result.onlyFmea;
+}
+function rwbRawHeaders(){
+  const src = (result.onlyRwb[0]) || (rwbRaw && rwbRaw[0]) || {__id:'',__idN:''};
+  const keys = Object.keys(src).filter(k=>!k.startsWith('__'));
+  return keys.length?keys:['Id'];
+}
+
+/* ===================== COMPARAISON DES TAUX ===================== */
+function toNum(v){
+  if(typeof v==='number') return isNaN(v)?null:v;
+  if(v===''||v===null||v===undefined) return null;
+  const s = String(v).replace(/\s/g,'').replace(',','.');
+  const n = parseFloat(s);
+  return isNaN(n)?null:n;
+}
+function fmtRate(v){ const n=toNum(v); return n===null ? (v===null||v===undefined?'':String(v)) : n.toExponential(3); }
+function fmtDiff(d){ return (d===''||d===null||d===undefined) ? '' : (d===0?'0':d.toExponential(3)); }
+function rateCompare(r){
+  const ri = fmeaData.rateIdx;
+  const fr = (ri!=null) ? r.raw[ri] : '';
+  const rr = (rwbRateMap && rwbRateMap.has(r.__codeN)) ? rwbRateMap.get(r.__codeN) : undefined;
+  const x = toNum(fr), y = toNum(rr);
+  if(x===null || y===null) return { x, y, diff:'', status:'na' };
+  const diff = x - y;
+  const match = (x===0 && y===0) || Math.abs(diff) <= RATE_REL_TOL*Math.max(Math.abs(x),Math.abs(y));
+  return { x, y, diff, status: match?'match':'nomatch' };
+}
+const STATUS_LABEL = { match:'MATCH', nomatch:'NO MATCH', na:'N/A' };
+
+/* Descripteurs de colonnes selon la vue : {label, get(r), cell?(r)->html, tdClass?(r)} */
+function getColumns(view){
+  const cols = [];
+  if(view==='onlyRwb'){
+    rwbRawHeaders().forEach((h,i)=> cols.push({ label:h, get:r=>r[h], tdClass:()=> i===0?'code':'' }));
+    cols.push({ label:'Description ('+settings.rwbDescSheet+' '+settings.rwbDescCol+')', get:r=> (rwbDescMap&&rwbDescMap.has(r.__idN))?rwbDescMap.get(r.__idN):'' });
+    return cols;
+  }
+  fmeaData.headers.forEach(hd=> cols.push({ label:hd.label, get:r=> r.raw[hd.idx], tdClass:()=> hd.idx===fmeaData.codeIdx?'code':'' }));
+  if(view==='common'){
+    const ri = fmeaData.rateIdx;
+    cols.push({ label:'Failure rate FMEA ('+settings.fmeaRateCol+')', get:r=> ri!=null?toNum(r.raw[ri]):null, cell:r=> fmtRate(ri!=null?r.raw[ri]:'') });
+    cols.push({ label:'FailureRate RWB ('+settings.rwbRateCol+')', get:r=> toNum(rwbRateMap&&rwbRateMap.get(r.__codeN)), cell:r=> fmtRate(rwbRateMap&&rwbRateMap.get(r.__codeN)) });
+    cols.push({ label:'Écart (FMEA−RWB)', get:r=>{ const d=rateCompare(r).diff; return d===''?null:d; }, cell:r=> fmtDiff(rateCompare(r).diff) });
+    cols.push({ label:'Comparaison', get:r=> STATUS_LABEL[rateCompare(r).status],
+                cell:r=>{ const s=rateCompare(r).status; return '<span class="badge '+s+'">'+STATUS_LABEL[s]+'</span>'; } });
+    cols.push({ label:'Description ('+settings.rwbDescSheet+' '+settings.rwbDescCol+')', get:r=> (rwbDescMap&&rwbDescMap.has(r.__codeN))?rwbDescMap.get(r.__codeN):'' });
+  }
+  return cols;
+}
+
+function render(){
+  if(!result) return;
+  const cols = getColumns(currentView);
+  const q = norm($('search').value);
+  let rows = currentRows().slice();
+  if(q) rows = rows.filter(r=> cols.some(c=> norm(c.get(r)).includes(q)));
+  if(sortState.col!==null && sortState.col<cols.length){
+    const c = cols[sortState.col];
+    rows.sort((a,b)=>{
+      const av=c.get(a), bv=c.get(b), an=toNum(av), bn=toNum(bv);
+      let cmp;
+      if(an!==null && bn!==null) cmp = an-bn;
+      else { const as=norm(av), bs=norm(bv); cmp = as<bs?-1:(as>bs?1:0); }
+      return cmp*sortState.dir;
+    });
+  }
+  const hints = { common:'Lignes du SFMEA dont le Failure code existe aussi côté RWB (avec comparaison des taux).',
+                  onlyFmea:'Failure codes du SFMEA absents côté RWB.',
+                  onlyRwb:'Id du RWB absents du SFMEA.' };
+  $('viewHint').textContent = hints[currentView] + ' — '+rows.length+' ligne(s)'+(q?' (filtré)':'')+'.';
+
+  const thead = $('resultTable').querySelector('thead');
+  const tbody = $('resultTable').querySelector('tbody');
+  thead.innerHTML = '<tr>'+cols.map((c,i)=>'<th data-c="'+i+'">'+escapeHtml(c.label)+(sortState.col===i?(sortState.dir>0?' ▲':' ▼'):'')+'</th>').join('')+'</tr>';
+  thead.querySelectorAll('th').forEach(th=> th.addEventListener('click', ()=>{
+    const c=+th.dataset.c; if(sortState.col===c) sortState.dir*=-1; else {sortState.col=c; sortState.dir=1;} render();
+  }));
+  tbody.innerHTML = rows.map(r=>{
+    return '<tr>'+cols.map(c=>{
+      const cls = c.tdClass ? c.tdClass(r) : '';
+      const raw = c.get(r);
+      const html = c.cell ? c.cell(r) : escapeHtml(raw);
+      return '<td'+(cls?' class="'+cls+'"':'')+' title="'+escapeHtml(raw)+'">'+html+'</td>';
+    }).join('')+'</tr>';
+  }).join('') || '<tr><td class="muted">Aucune ligne.</td></tr>';
+}
+
+function escapeHtml(v){ return (v===null||v===undefined?'':String(v)).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+$('exportBtn').addEventListener('click', ()=>{
+  if(!result) return;
+  const wb = XLSX.utils.book_new();
+  const make = (view, rows)=>{
+    const cols = getColumns(view);
+    const aoa = [cols.map(c=>c.label), ...rows.map(r=> cols.map(c=> c.get(r)))];
+    return XLSX.utils.aoa_to_sheet(aoa);
+  };
+  XLSX.utils.book_append_sheet(wb, make('common',  result.common),   'Communs');
+  XLSX.utils.book_append_sheet(wb, make('onlyFmea', result.onlyFmea), 'FMEA_seulement');
+  XLSX.utils.book_append_sheet(wb, make('onlyRwb',  result.onlyRwb),  'RWB_seulement');
+  XLSX.writeFile(wb, 'comparaison_failure_codes.xlsx');
+});
+
+/* ===================== NAVIGATION ===================== */
+document.querySelectorAll('.navitem').forEach(n=> n.addEventListener('click', ()=>{
+  const nav = n.dataset.nav;
+  document.querySelectorAll('.navitem').forEach(x=> x.classList.toggle('active', x===n));
+  $('view-compare').hidden = nav!=='compare';
+  $('view-settings').hidden = nav!=='settings';
+  $('pageTitle').textContent = nav==='settings' ? 'Réglages' : 'Comparaison « Failure code »';
+  $('pageSub').textContent = nav==='settings'
+    ? 'Paramétrez les feuilles et colonnes lues par l’application. Les modifications sont appliquées dès l’enregistrement.'
+    : 'Lignes communes entre le SFMEA et le RWB, comparaison des taux de défaillance et récupération de la Description.';
+}));
+
+/* ===================== FORMULAIRE RÉGLAGES ===================== */
+function renderSettingsForm(){
+  $('settingsGrid').innerHTML = SETTINGS_SCHEMA.map(group=>{
+    const fields = group.fields.map(f=>{
+      const val = escapeHtml(settings[f.key]);
+      const type = f.type==='num' ? 'number' : 'text';
+      const extra = f.type==='col' ? ' maxlength="3" style="text-transform:uppercase"' : (f.type==='num' ? ' min="1"' : '');
+      return '<div class="field"><label>'+escapeHtml(f.label)+'</label>'+
+             '<input type="'+type+'" id="set_'+f.key+'" value="'+val+'"'+extra+'></div>';
+    }).join('');
+    return '<div class="card"><h3>'+escapeHtml(group.title)+'</h3>'+fields+'</div>';
+  }).join('');
+}
+function updateSubtitles(){
+  $('fmeaSub').innerHTML = 'Feuille <b>'+escapeHtml(settings.fmeaSheet)+'</b> · Failure code <b>'+escapeHtml(settings.fmeaCodeCol)+'</b> · taux <b>'+escapeHtml(settings.fmeaRateCol)+'</b>.';
+  $('rwbSub').innerHTML = 'Feuille <b>'+escapeHtml(settings.rwbRateSheet)+'</b> · Id <b>'+escapeHtml(settings.rwbIdCol)+'</b> · FailureRate <b>'+escapeHtml(settings.rwbRateCol)+'</b> · Description <b>'+escapeHtml(settings.rwbDescSheet)+' '+escapeHtml(settings.rwbDescCol)+'</b>.';
+}
+
+$('saveSettings').addEventListener('click', async ()=>{
+  const draft = {};
+  let bad = null;
+  for(const group of SETTINGS_SCHEMA){
+    for(const f of group.fields){
+      let v = $('set_'+f.key).value.trim();
+      if(f.type==='col'){
+        v = v.toUpperCase();
+        if(colToIdx(v) < 0) bad = bad || ('Colonne invalide pour « '+f.label+' » (attendu une lettre comme A, E, N).');
+      } else if(f.type==='num'){
+        const n = parseInt(v,10);
+        if(isNaN(n)||n<1) bad = bad || ('Valeur invalide pour « '+f.label+' » (entier ≥ 1).');
+        v = n;
+      } else if(!v){ bad = bad || ('« '+f.label+' » ne peut pas être vide.'); }
+      draft[f.key] = v;
+    }
+  }
+  const st = $('setStatus');
+  if(bad){ st.textContent = '✗ '+bad; st.className='set-status err'; return; }
+  settings = Object.assign({}, DEFAULTS, draft);
+  saveSettingsToStorage();
+  updateSubtitles();
+  st.textContent = 'Réglages enregistrés.'; st.className='set-status ok';
+  // Recharger les fichiers déjà sélectionnés avec les nouveaux réglages
+  if(fmeaFileObj) await processFmea(fmeaFileObj);
+  if(rwbFileObj) await processRwb(rwbFileObj);
+  if(fmeaData && rwbIds){ doCompare(); st.textContent = 'Réglages enregistrés et analyse régénérée.'; }
+  else if(fmeaFileObj||rwbFileObj){ st.textContent = 'Réglages enregistrés et fichiers rechargés.'; }
+});
+
+$('resetSettings').addEventListener('click', ()=>{
+  settings = Object.assign({}, DEFAULTS);
+  saveSettingsToStorage();
+  renderSettingsForm();
+  updateSubtitles();
+  const st = $('setStatus'); st.textContent='Réglages remis par défaut.'; st.className='set-status ok';
+});
+
+/* ===================== INIT ===================== */
+renderSettingsForm();
+updateSubtitles();
+</script>
+</body>
+</html>
