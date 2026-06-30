@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Comparateur Failure code — FMEA vs RWB PrimaryEvents</title>
+<script src="xlsx.full.min.js"></script>
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --accent:#38bdf8; --ok:#22c55e; --warn:#f59e0b; --txt:#e2e8f0; --muted:#94a3b8; --border:#334155; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; margin:0; background:var(--bg); color:var(--txt); }
+  header { padding:20px 28px; background:var(--card); border-bottom:1px solid var(--border); }
+  header h1 { margin:0; font-size:20px; }
+  header p { margin:6px 0 0; color:var(--muted); font-size:13px; }
+  main { padding:24px 28px; max-width:1500px; margin:0 auto; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:18px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px; }
+  .card h3 { margin:0 0 8px; font-size:14px; }
+  .card small { color:var(--muted); display:block; margin-bottom:10px; line-height:1.4; }
+  input[type=file] { width:100%; color:var(--txt); font-size:13px; }
+  .status { font-size:12px; margin-top:8px; color:var(--muted); }
+  .status.loaded { color:var(--ok); }
+  .controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:18px; }
+  button { background:var(--accent); color:#03293d; border:0; padding:10px 18px; border-radius:8px; font-weight:600; cursor:pointer; font-size:14px; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  button.sec { background:transparent; color:var(--accent); border:1px solid var(--accent); }
+  .summary { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:16px; }
+  .pill { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:10px 16px; font-size:13px; }
+  .pill b { font-size:20px; display:block; color:var(--accent); }
+  .pill.ok b { color:var(--ok); } .pill.warn b { color:var(--warn); }
+  input[type=text] { background:#0b1220; border:1px solid var(--border); color:var(--txt); padding:9px 12px; border-radius:8px; font-size:13px; min-width:260px; }
+  .tabs { display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
+  .tab { background:var(--card); border:1px solid var(--border); padding:8px 14px; border-radius:8px; cursor:pointer; font-size:13px; color:var(--muted); }
+  .tab.active { color:var(--txt); border-color:var(--accent); }
+  .table-wrap { overflow:auto; border:1px solid var(--border); border-radius:10px; max-height:62vh; }
+  table { border-collapse:collapse; width:100%; font-size:12.5px; }
+  th, td { border-bottom:1px solid var(--border); padding:7px 10px; text-align:left; vertical-align:top; white-space:nowrap; max-width:380px; overflow:hidden; text-overflow:ellipsis; }
+  th { position:sticky; top:0; background:#0b1220; z-index:1; cursor:pointer; }
+  tr:hover td { background:#172033; }
+  td.code { color:var(--accent); font-weight:600; white-space:nowrap; }
+  .badge { display:inline-block; padding:2px 9px; border-radius:6px; font-weight:700; font-size:11px; letter-spacing:.3px; }
+  .badge.match { background:rgba(34,197,94,.18); color:#4ade80; border:1px solid rgba(34,197,94,.4); }
+  .badge.nomatch { background:rgba(248,113,113,.18); color:#f87171; border:1px solid rgba(248,113,113,.45); }
+  .badge.na { background:rgba(148,163,184,.15); color:var(--muted); border:1px solid var(--border); }
+  .muted { color:var(--muted); }
+  .err { color:#f87171; font-size:13px; margin-top:10px; }
+  .hint { color:var(--muted); font-size:12px; margin:4px 0 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Comparateur « Failure code »</h1>
+  <p>Lignes communes entre <b>analysis</b> (col E « Failure code ») du FMEA et <b>FailureModels</b> (col A « Id ») du RWB_Export, avec comparaison des taux de défaillance (FMEA col G vs RWB col N). Tout est local : aucune donnée n'est envoyée sur internet.</p>
+</header>
+<main>
+  <div class="grid">
+    <div class="card">
+      <h3>1. SFMEA Excel Files</h3>
+      <small>Feuille <b>analysis</b>, colonne <b>Failure code</b>.</small>
+      <input type="file" id="fmeaFile" accept=".xlsm,.xlsx,.xls">
+      <div class="status" id="fmeaStatus">Aucun fichier chargé.</div>
+    </div>
+    <div class="card">
+      <h3>2. RWB Excel Files</h3>
+      <small>Feuille <b>FailureModels</b>, colonne <b>Id</b> (A) + <b>FailureRate</b> (N).</small>
+      <input type="file" id="rwbFile" accept=".xlsx,.xlsm,.xls">
+      <div class="status" id="rwbStatus">Aucun fichier chargé.</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="compareBtn" disabled>Comparer</button>
+    <input type="text" id="search" placeholder="Filtrer (code, équipement, mode...)" />
+    <button class="sec" id="exportBtn" disabled>Exporter en Excel</button>
+  </div>
+  <div class="err" id="error"></div>
+
+  <div id="results" style="display:none;">
+    <div class="summary" id="summary"></div>
+    <div class="tabs">
+      <div class="tab active" data-view="common">Communs</div>
+      <div class="tab" data-view="onlyFmea">Dans FMEA seulement</div>
+      <div class="tab" data-view="onlyRwb">Dans RWB seulement</div>
+    </div>
+    <p class="hint" id="viewHint"></p>
+    <div class="table-wrap">
+      <table id="resultTable"><thead></thead><tbody></tbody></table>
+    </div>
+  </div>
+</main>
+
+<script>
+const FMEA_SHEET = 'analysis';
+const FMEA_HEADER_LABEL = 'Failure code';
+const RWB_SHEET = 'FailureModels';   // feuille RWB : col A = Id (code), col N = FailureRate
+const RWB_ID_LABEL = 'Id';
+const FMEA_RATE_HINT = 'failure rate'; // libellé col G (FMEA)
+const RWB_RATE_SHEET = 'FailureModels'; // feuille RWB contenant le taux (même feuille)
+const RWB_RATE_ID_LABEL = 'Id';
+const RWB_RATE_LABEL = 'FailureRate'; // colonne N
+const RWB_DESC_SHEET = 'PrimaryEvents'; // feuille contenant la Description
+const RWB_DESC_ID_LABEL = 'Id';          // colonne A
+const RWB_DESC_LABEL = 'Description';     // colonne F
+const RATE_REL_TOL = 1e-6; // tolérance relative pour considérer 2 taux identiques
+const MAX_FMEA_COL = 24; // colonnes A..X (au-delà = colonnes numériques parasites)
+
+let fmeaData = null; // {headers:[], rows:[{__code, cells:{}}]}
+let rwbIds = null;   // Set normalisé
+let rwbRaw = null;   // [{Id, ...}]
+let rwbRateMap = null; // Map code -> FailureRate (feuille FailureModels)
+let rwbDescMap = null; // Map code -> Description (feuille PrimaryEvents, col F)
+let result = null;   // {common, onlyFmea, onlyRwb, headers}
+let currentView = 'common';
+let sortState = { col:null, dir:1 };
+
+const $ = id => document.getElementById(id);
+const norm = v => (v===null||v===undefined) ? '' : String(v).trim().toUpperCase();
+
+function readFile(file){
+  return new Promise((resolve,reject)=>{
+    const r = new FileReader();
+    r.onload = e => { try { resolve(XLSX.read(e.target.result, {type:'array'})); } catch(err){ reject(err); } };
+    r.onerror = reject;
+    r.readAsArrayBuffer(file);
+  });
+}
+
+function sheetToMatrix(wb, sheetName){
+  const ws = wb.Sheets[sheetName];
+  if(!ws) throw new Error('Feuille « '+sheetName+' » introuvable. Feuilles présentes : '+wb.SheetNames.join(', '));
+  return XLSX.utils.sheet_to_json(ws, {header:1, raw:false, defval:''});
+}
+
+// Trouve la ligne d'en-tête contenant le libellé, renvoie {headerRow, colIndex}
+function findHeader(matrix, label, maxScan=10){
+  const L = norm(label);
+  for(let r=0; r<Math.min(maxScan, matrix.length); r++){
+    const row = matrix[r] || [];
+    for(let c=0; c<row.length; c++){
+      if(norm(row[c]) === L) return { headerRow:r, colIndex:c, headers:row };
+    }
+  }
+  throw new Error('Colonne « '+label+' » introuvable dans les premières lignes.');
+}
+
+async function loadFmea(file){
+  const wb = await readFile(file);
+  const m = sheetToMatrix(wb, FMEA_SHEET);
+  const h = findHeader(m, FMEA_HEADER_LABEL);
+  const headers = h.headers.slice(0, MAX_FMEA_COL).map((v,i)=> (v && String(v).trim()) ? String(v).trim() : ('Col'+(i+1)));
+  const codeIdx = h.colIndex;
+  let equipIdx = headers.findIndex(hd=> norm(hd)==='EQUIPMENT');
+  if(equipIdx < 0) equipIdx = 0; // colonne A par défaut
+  const rows = [];
+  let skippedNoEquip = 0;
+  for(let r=h.headerRow+1; r<m.length; r++){
+    const row = m[r] || [];
+    const code = row[codeIdx];
+    if(code===null || code===undefined || String(code).trim()==='') continue;
+    // Ignorer les lignes où Equipment (colonne A) est vide
+    const equip = row[equipIdx];
+    if(equip===null || equip===undefined || String(equip).trim()===''){ skippedNoEquip++; continue; }
+    const cells = {};
+    for(let c=0; c<MAX_FMEA_COL; c++) cells[headers[c]] = row[c]!==undefined ? row[c] : '';
+    rows.push({ __code: String(code).trim(), __codeN: norm(code), cells });
+  }
+  const rateIdx = headers.findIndex(hd=> norm(hd).includes(norm(FMEA_RATE_HINT)));
+  return { headers, codeLabel: headers[codeIdx], rateLabel: rateIdx>=0?headers[rateIdx]:null, rows, skippedNoEquip };
+}
+
+// Construit une table id -> valeur depuis une feuille du classeur RWB
+function loadKeyValueMap(wb, sheetName, idLabel, valLabel){
+  const map = new Map();
+  if(!wb.Sheets[sheetName]) return map; // feuille absente : on continue sans
+  const m = sheetToMatrix(wb, sheetName);
+  let idIdx, valIdx;
+  try{ idIdx = findHeader(m, idLabel).colIndex; }catch(e){ return map; }
+  try{ valIdx = findHeader(m, valLabel).colIndex; }catch(e){ return map; }
+  for(let r=1; r<m.length; r++){
+    const row = m[r]||[];
+    const id = row[idIdx];
+    if(id===null||id===undefined||String(id).trim()==='') continue;
+    if(!map.has(norm(id))) map.set(norm(id), row[valIdx]);
+  }
+  return map;
+}
+
+async function loadRwb(file){
+  const wb = await readFile(file);
+  const m = sheetToMatrix(wb, RWB_SHEET);
+  const h = findHeader(m, RWB_ID_LABEL);
+  const idIdx = h.colIndex;
+  const ids = new Set();
+  const raw = [];
+  const headers = h.headers.map((v,i)=> (v&&String(v).trim())?String(v).trim():('Col'+(i+1)));
+  for(let r=h.headerRow+1; r<m.length; r++){
+    const row = m[r]||[];
+    const id = row[idIdx];
+    if(id===null||id===undefined||String(id).trim()==='') continue;
+    ids.add(norm(id));
+    const obj={}; headers.forEach((hd,i)=> obj[hd]= row[i]!==undefined?row[i]:'');
+    obj.__id = String(id).trim(); obj.__idN = norm(id);
+    raw.push(obj);
+  }
+  const rateMap = loadKeyValueMap(wb, RWB_RATE_SHEET, RWB_RATE_ID_LABEL, RWB_RATE_LABEL);
+  const descMap = loadKeyValueMap(wb, RWB_DESC_SHEET, RWB_DESC_ID_LABEL, RWB_DESC_LABEL);
+  return { ids, raw, headers, rateMap, descMap };
+}
+
+function refreshStatus(){
+  $('compareBtn').disabled = !(fmeaData && rwbIds);
+}
+
+$('fmeaFile').addEventListener('change', async e=>{
+  $('error').textContent='';
+  const f = e.target.files[0]; if(!f) return;
+  $('fmeaStatus').textContent='Lecture en cours...'; $('fmeaStatus').className='status';
+  try{
+    fmeaData = await loadFmea(f);
+    const skipTxt = fmeaData.skippedNoEquip ? (' ('+fmeaData.skippedNoEquip+' ligne(s) sans Equipment ignorée(s))') : '';
+    $('fmeaStatus').textContent = '✓ '+f.name+' — '+fmeaData.rows.length+' lignes exploitables'+skipTxt+'.';
+    $('fmeaStatus').className='status loaded';
+  }catch(err){ fmeaData=null; $('fmeaStatus').textContent='✗ '+err.message; $('fmeaStatus').className='status'; $('error').textContent=err.message; }
+  refreshStatus();
+});
+
+$('rwbFile').addEventListener('change', async e=>{
+  $('error').textContent='';
+  const f = e.target.files[0]; if(!f) return;
+  $('rwbStatus').textContent='Lecture en cours...'; $('rwbStatus').className='status';
+  try{
+    const r = await loadRwb(f);
+    rwbIds = r.ids; rwbRaw = r.raw; rwbRateMap = r.rateMap; rwbDescMap = r.descMap;
+    const rateInfo = rwbRateMap.size ? (', '+rwbRateMap.size+' taux lus') : ' (⚠ taux FailureRate introuvables)';
+    $('rwbStatus').textContent = '✓ '+f.name+' — '+rwbIds.size+' Id dans FailureModels'+rateInfo+'.';
+    $('rwbStatus').className='status loaded';
+  }catch(err){ rwbIds=null; $('rwbStatus').textContent='✗ '+err.message; $('rwbStatus').className='status'; $('error').textContent=err.message; }
+  refreshStatus();
+});
+
+$('compareBtn').addEventListener('click', ()=>{
+  $('error').textContent='';
+  if(!fmeaData || !rwbIds) return;
+  const common = [], onlyFmea = [];
+  const fmeaCodes = new Set(fmeaData.rows.map(r=>r.__codeN));
+  for(const row of fmeaData.rows){
+    if(rwbIds.has(row.__codeN)) common.push(row); else onlyFmea.push(row);
+  }
+  const onlyRwb = rwbRaw.filter(r => !fmeaCodes.has(r.__idN));
+  result = { common, onlyFmea, onlyRwb };
+  renderSummary();
+  $('results').style.display='block';
+  $('exportBtn').disabled = false;
+  currentView='common'; setActiveTab(); render();
+});
+
+function renderSummary(){
+  const s = $('summary');
+  s.innerHTML =
+    '<div class="pill">Failure codes (FMEA)<b>'+fmeaData.rows.length+'</b></div>'+
+    '<div class="pill">Id (FailureModels)<b>'+rwbIds.size+'</b></div>'+
+    '<div class="pill ok">Communs<b>'+result.common.length+'</b></div>'+
+    '<div class="pill warn">FMEA seulement<b>'+result.onlyFmea.length+'</b></div>'+
+    '<div class="pill warn">RWB seulement<b>'+result.onlyRwb.length+'</b></div>';
+}
+
+document.querySelectorAll('.tab').forEach(t=> t.addEventListener('click', ()=>{
+  currentView = t.dataset.view; sortState={col:null,dir:1}; setActiveTab(); render();
+}));
+function setActiveTab(){ document.querySelectorAll('.tab').forEach(t=> t.classList.toggle('active', t.dataset.view===currentView)); }
+
+$('search').addEventListener('input', render);
+
+function currentRows(){
+  if(currentView==='onlyRwb') return result.onlyRwb;
+  return currentView==='common' ? result.common : result.onlyFmea;
+}
+function rwbRawHeaders(){
+  const src = (result.onlyRwb[0]) || (rwbRaw && rwbRaw[0]) || {__id:'',__idN:''};
+  const keys = Object.keys(src).filter(k=>!k.startsWith('__'));
+  return keys.length?keys:['Id'];
+}
+
+// --- Comparaison des taux de défaillance (FMEA col G vs RWB col N) ---
+function toNum(v){
+  if(typeof v==='number') return isNaN(v)?null:v;
+  if(v===''||v===null||v===undefined) return null;
+  const s = String(v).replace(/\s/g,'').replace(',','.');
+  const n = parseFloat(s);
+  return isNaN(n)?null:n;
+}
+function fmtRate(v){ const n=toNum(v); return n===null ? (v===null||v===undefined?'':String(v)) : n.toExponential(3); }
+function fmtDiff(d){ return (d===''||d===null||d===undefined) ? '' : (d===0?'0':d.toExponential(3)); }
+function rateCompare(r){
+  const fr = fmeaData.rateLabel ? r.cells[fmeaData.rateLabel] : '';
+  const rr = (rwbRateMap && rwbRateMap.has(r.__codeN)) ? rwbRateMap.get(r.__codeN) : undefined;
+  const x = toNum(fr), y = toNum(rr);
+  if(x===null || y===null) return { x, y, diff:'', status:'na' };
+  const diff = x - y;
+  const match = (x===0 && y===0) || Math.abs(diff) <= RATE_REL_TOL*Math.max(Math.abs(x),Math.abs(y));
+  return { x, y, diff, status: match?'match':'nomatch' };
+}
+const STATUS_LABEL = { match:'MATCH', nomatch:'NO MATCH', na:'N/A' };
+
+// Descripteurs de colonnes selon la vue : {label, get(r), cell?(r)->html, tdClass?(r)}
+function getColumns(view){
+  const cols = [];
+  if(view==='onlyRwb'){
+    rwbRawHeaders().forEach((h,i)=> cols.push({ label:h, get:r=>r[h], tdClass:()=> i===0?'code':'' }));
+    cols.push({ label:'Description (PrimaryEvents F)', get:r=> (rwbDescMap&&rwbDescMap.has(r.__idN))?rwbDescMap.get(r.__idN):'' });
+    return cols;
+  }
+  const codeLabel = fmeaData.codeLabel;
+  fmeaData.headers.forEach(h=> cols.push({ label:h, get:r=>r.cells[h], tdClass:()=> h===codeLabel?'code':'' }));
+  if(view==='common'){
+    const rl = fmeaData.rateLabel;
+    cols.push({ label:'Failure rate FMEA (G)', get:r=> rl?toNum(r.cells[rl]):null, cell:r=> fmtRate(rl?r.cells[rl]:'') });
+    cols.push({ label:'FailureRate RWB (N)', get:r=> toNum(rwbRateMap&&rwbRateMap.get(r.__codeN)), cell:r=> fmtRate(rwbRateMap&&rwbRateMap.get(r.__codeN)) });
+    cols.push({ label:'Écart (FMEA−RWB)', get:r=>{ const d=rateCompare(r).diff; return d===''?null:d; }, cell:r=> fmtDiff(rateCompare(r).diff) });
+    cols.push({ label:'Comparaison', get:r=> STATUS_LABEL[rateCompare(r).status],
+                cell:r=>{ const s=rateCompare(r).status; return '<span class="badge '+s+'">'+STATUS_LABEL[s]+'</span>'; } });
+    cols.push({ label:'Description (PrimaryEvents F)', get:r=> (rwbDescMap&&rwbDescMap.has(r.__codeN))?rwbDescMap.get(r.__codeN):'' });
+  }
+  return cols;
+}
+
+function render(){
+  if(!result) return;
+  const cols = getColumns(currentView);
+  const q = norm($('search').value);
+  let rows = currentRows().slice();
+  if(q) rows = rows.filter(r=> cols.some(c=> norm(c.get(r)).includes(q)));
+  if(sortState.col!==null && sortState.col<cols.length){
+    const c = cols[sortState.col];
+    rows.sort((a,b)=>{
+      const av=c.get(a), bv=c.get(b), an=toNum(av), bn=toNum(bv);
+      let cmp;
+      if(an!==null && bn!==null) cmp = an-bn;
+      else { const as=norm(av), bs=norm(bv); cmp = as<bs?-1:(as>bs?1:0); }
+      return cmp*sortState.dir;
+    });
+  }
+  const hints = { common:'Lignes du FMEA dont le Failure code existe aussi dans FailureModels (avec comparaison des taux).',
+                  onlyFmea:'Failure codes du FMEA absents de FailureModels.',
+                  onlyRwb:'Id de FailureModels absents du FMEA.' };
+  $('viewHint').textContent = hints[currentView] + ' — '+rows.length+' ligne(s)'+(q?' (filtré)':'')+'.';
+
+  const thead = $('resultTable').querySelector('thead');
+  const tbody = $('resultTable').querySelector('tbody');
+  thead.innerHTML = '<tr>'+cols.map((c,i)=>'<th data-c="'+i+'">'+escapeHtml(c.label)+(sortState.col===i?(sortState.dir>0?' ▲':' ▼'):'')+'</th>').join('')+'</tr>';
+  thead.querySelectorAll('th').forEach(th=> th.addEventListener('click', ()=>{
+    const c=+th.dataset.c; if(sortState.col===c) sortState.dir*=-1; else {sortState.col=c; sortState.dir=1;} render();
+  }));
+  tbody.innerHTML = rows.map(r=>{
+    return '<tr>'+cols.map(c=>{
+      const cls = c.tdClass ? c.tdClass(r) : '';
+      const raw = c.get(r);
+      const html = c.cell ? c.cell(r) : escapeHtml(raw);
+      return '<td'+(cls?' class="'+cls+'"':'')+' title="'+escapeHtml(raw)+'">'+html+'</td>';
+    }).join('')+'</tr>';
+  }).join('') || '<tr><td class="muted">Aucune ligne.</td></tr>';
+}
+
+function escapeHtml(v){ return (v===null||v===undefined?'':String(v)).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+$('exportBtn').addEventListener('click', ()=>{
+  if(!result) return;
+  const wb = XLSX.utils.book_new();
+  const make = (view, rows)=>{
+    const cols = getColumns(view);
+    const aoa = [cols.map(c=>c.label), ...rows.map(r=> cols.map(c=> c.get(r)))];
+    return XLSX.utils.aoa_to_sheet(aoa);
+  };
+  XLSX.utils.book_append_sheet(wb, make('common',   result.common),   'Communs');
+  XLSX.utils.book_append_sheet(wb, make('onlyFmea',  result.onlyFmea), 'FMEA_seulement');
+  XLSX.utils.book_append_sheet(wb, make('onlyRwb',   result.onlyRwb),  'RWB_seulement');
+  XLSX.writeFile(wb, 'comparaison_failure_codes.xlsx');
+});
+</script>
+</body>
+</html>
